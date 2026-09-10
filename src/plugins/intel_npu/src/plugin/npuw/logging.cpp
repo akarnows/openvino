@@ -83,6 +83,38 @@ bool ov::npuw::profiling_enabled() {
     return do_profiling;
 }
 
+bool ov::npuw::moe_stats_enabled() {
+    static bool do_moe_stats = false;
+#ifdef NPU_PLUGIN_DEVELOPER_BUILD
+    static std::once_flag flag;
+
+    std::call_once(flag, []() {
+        const auto* stats_opt = get_env({"OPENVINO_NPUW_MOE_STATS"});
+        if (!stats_opt) {
+            return;
+        }
+        const std::string stats_str(stats_opt);
+        do_moe_stats = (stats_str == "YES" || stats_str == "ON" || stats_str == "1");
+    });
+#endif
+    return do_moe_stats;
+}
+
+std::string ov::npuw::moe_stats_dump_path() {
+    static std::string path = "npuw_moe_stats.json";
+#ifdef NPU_PLUGIN_DEVELOPER_BUILD
+    static std::once_flag flag;
+
+    std::call_once(flag, []() {
+        const auto* path_opt = get_env({"OPENVINO_NPUW_MOE_STATS_PATH"});
+        if (path_opt) {
+            path = path_opt;
+        }
+    });
+#endif
+    return path;
+}
+
 thread_local int ov::npuw::__logging_indent__::this_indent = 0;
 
 ov::npuw::__logging_indent__::__logging_indent__() {

@@ -130,6 +130,12 @@ public:
     MoEExecutor(ISubrequestAccessor& accessor, AllocatorFn allocator);
 
     /**
+     * @brief Destructor. Dumps accumulated expert-usage stats when enabled via
+     * OPENVINO_NPUW_MOE_STATS.
+     */
+    ~MoEExecutor();
+
+    /**
      * @brief Prepare MoE resources for a sublayer
      *
      * Must be called once for each sublayer (including function calls) before first run.
@@ -197,6 +203,19 @@ public:
     }
 
 private:
+    /**
+     * @brief Accumulate expert-usage counters for a layer (no-op unless moe_stats_enabled()).
+     * @param layer_idx Sublayer index (function call index passed to run())
+     * @param expert_id Expert that processed tokens in this call
+     * @param token_count Number of tokens dispatched to this expert in this call
+     */
+    void record_expert_usage(size_t layer_idx, size_t expert_id, size_t token_count);
+
+    /**
+     * @brief Writes accumulated expert-usage counters to the path from OPENVINO_NPUW_MOE_STATS_PATH.
+     */
+    void dump_expert_usage() const;
+
     // === Dependency injection ===
     ISubrequestAccessor& m_accessor;  // Access to JustInferRequest internals
     AllocatorFn m_allocator;          // Memory allocation function
@@ -236,6 +255,10 @@ private:
     // Routing maps (reused across inferences to avoid repeated allocation)
     std::map<size_t, std::vector<size_t>> m_token_to_experts;
     std::map<size_t, std::vector<size_t>> m_expert_to_tokens;
+
+    // Expert selection counts accumulated across all run() calls, populated only when
+    // moe_stats_enabled() is true: layer_idx -> expert_id -> total token selections.
+    std::map<size_t, std::map<size_t, size_t>> m_expert_usage;
 
     // MoE I/O storage (per-sublayer)
     std::vector<MoEIO> m_moe_io;

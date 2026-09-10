@@ -22,6 +22,10 @@ bool debug_groups();
 
 bool profiling_enabled();
 
+bool moe_stats_enabled();
+
+std::string moe_stats_dump_path();
+
 class __logging_indent__ {
     static thread_local int this_indent;
 

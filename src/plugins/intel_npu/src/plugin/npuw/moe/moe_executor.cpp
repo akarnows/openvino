@@ -5,6 +5,7 @@
 #include "moe_executor.hpp"
 
 #include <optional>
+#include <sstream>
 
 #include "../compiled_model.hpp"  // For CompiledModel::CompiledModelDesc
 #include "../logging.hpp"
@@ -23,6 +24,49 @@ MoEExecutor::MoEExecutor(ISubrequestAccessor& accessor, AllocatorFn allocator)
     // Profile will be initialized using profiling_enabled() in MoEProfile constructor
     m_profile.emplace();  // MoEProfile constructor reads profiling_enabled()
     LOG_DEBUG("MoEExecutor created");
+}
+
+MoEExecutor::~MoEExecutor() {
+    if (ov::npuw::moe_stats_enabled()) {
+        dump_expert_usage();
+    }
+}
+
+void MoEExecutor::record_expert_usage(size_t layer_idx, size_t expert_id, size_t token_count) {
+    m_expert_usage[layer_idx][expert_id] += token_count;
+}
+
+void MoEExecutor::dump_expert_usage() const {
+    if (m_expert_usage.empty()) {
+        return;
+    }
+
+    std::ostringstream oss;
+    oss << "{\n";
+    for (auto layer_it = m_expert_usage.begin(); layer_it != m_expert_usage.end(); ++layer_it) {
+        if (layer_it != m_expert_usage.begin()) {
+            oss << ",\n";
+        }
+        oss << "  \"" << layer_it->first << "\": {";
+        const auto& experts = layer_it->second;
+        for (auto expert_it = experts.begin(); expert_it != experts.end(); ++expert_it) {
+            if (expert_it != experts.begin()) {
+                oss << ", ";
+            }
+            oss << "\"" << expert_it->first << "\": " << expert_it->second;
+        }
+        oss << "}";
+    }
+    oss << "\n}\n";
+
+    const auto path = ov::npuw::moe_stats_dump_path();
+    std::ofstream file(path);
+    if (file) {
+        file << oss.str();
+        LOG_INFO("MoE expert usage stats written to " << path);
+    } else {
+        LOG_WARN("MoE: failed to open stats dump path " << path);
+    }
 }
 
 void MoEExecutor::prepare(size_t idx, size_t real_idx, size_t num_sublayers, size_t pool_size) {
@@ -229,6 +273,11 @@ void MoEExecutor::run(size_t real_idx, size_t idx) {
         });
         if (selected_experts.empty()) {
             OPENVINO_THROW("MoE: No experts selected by router");
+        }
+        if (ov::npuw::moe_stats_enabled()) {
+            for (const auto& [expert_id, tokens] : m_expert_to_tokens) {
+                record_expert_usage(idx, expert_id, tokens.size());
+            }
         }
         m_profile->batch["Total Expert Batch"].record([&]() {
             run_expert_batch(idx, real_idx, selected_experts);
@@ -503,6 +552,10 @@ void MoEExecutor::run_expert_iterative(size_t idx) {
 
             if (cur.tokens.empty()) {
                 continue;  // expert not selected — do not advance ring_idx
+            }
+
+            if (ov::npuw::moe_stats_enabled()) {
+                record_expert_usage(idx, expert_id, cur.tokens.size());
             }
 
             // -- Dispatch: slice tokens into chunks and pipeline NPU execution --
