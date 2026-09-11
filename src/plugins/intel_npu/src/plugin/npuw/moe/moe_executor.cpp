@@ -27,9 +27,7 @@ MoEExecutor::MoEExecutor(ISubrequestAccessor& accessor, AllocatorFn allocator)
 }
 
 MoEExecutor::~MoEExecutor() {
-    if (ov::npuw::moe_stats_enabled()) {
-        dump_expert_usage();
-    }
+    dump_expert_usage();
 }
 
 void MoEExecutor::record_expert_usage(size_t layer_idx, size_t expert_id, size_t token_count) {
@@ -274,10 +272,8 @@ void MoEExecutor::run(size_t real_idx, size_t idx) {
         if (selected_experts.empty()) {
             OPENVINO_THROW("MoE: No experts selected by router");
         }
-        if (ov::npuw::moe_stats_enabled()) {
-            for (const auto& [expert_id, tokens] : m_expert_to_tokens) {
-                record_expert_usage(idx, expert_id, tokens.size());
-            }
+        for (const auto& [expert_id, tokens] : m_expert_to_tokens) {
+            record_expert_usage(idx, expert_id, tokens.size());
         }
         m_profile->batch["Total Expert Batch"].record([&]() {
             run_expert_batch(idx, real_idx, selected_experts);
@@ -554,9 +550,7 @@ void MoEExecutor::run_expert_iterative(size_t idx) {
                 continue;  // expert not selected — do not advance ring_idx
             }
 
-            if (ov::npuw::moe_stats_enabled()) {
-                record_expert_usage(idx, expert_id, cur.tokens.size());
-            }
+            record_expert_usage(idx, expert_id, cur.tokens.size());
 
             // -- Dispatch: slice tokens into chunks and pipeline NPU execution --
             size_t processed = 0;

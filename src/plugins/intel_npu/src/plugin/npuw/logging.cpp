@@ -84,20 +84,8 @@ bool ov::npuw::profiling_enabled() {
 }
 
 bool ov::npuw::moe_stats_enabled() {
-    static bool do_moe_stats = false;
-#ifdef NPU_PLUGIN_DEVELOPER_BUILD
-    static std::once_flag flag;
-
-    std::call_once(flag, []() {
-        const auto* stats_opt = get_env({"OPENVINO_NPUW_MOE_STATS"});
-        if (!stats_opt) {
-            return;
-        }
-        const std::string stats_str(stats_opt);
-        do_moe_stats = (stats_str == "YES" || stats_str == "ON" || stats_str == "1");
-    });
-#endif
-    return do_moe_stats;
+    // Local debugging helper: always collect and dump MoE routing stats.
+    return true;
 }
 
 std::string ov::npuw::moe_stats_dump_path() {

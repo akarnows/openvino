@@ -130,8 +130,7 @@ public:
     MoEExecutor(ISubrequestAccessor& accessor, AllocatorFn allocator);
 
     /**
-     * @brief Destructor. Dumps accumulated expert-usage stats when enabled via
-     * OPENVINO_NPUW_MOE_STATS.
+     * @brief Destructor. Dumps accumulated expert-usage stats for local debug.
      */
     ~MoEExecutor();
 
@@ -204,7 +203,7 @@ public:
 
 private:
     /**
-     * @brief Accumulate expert-usage counters for a layer (no-op unless moe_stats_enabled()).
+     * @brief Accumulate expert-usage counters for a layer.
      * @param layer_idx Sublayer index (function call index passed to run())
      * @param expert_id Expert that processed tokens in this call
      * @param token_count Number of tokens dispatched to this expert in this call
@@ -256,8 +255,8 @@ private:
     std::map<size_t, std::vector<size_t>> m_token_to_experts;
     std::map<size_t, std::vector<size_t>> m_expert_to_tokens;
 
-    // Expert selection counts accumulated across all run() calls, populated only when
-    // moe_stats_enabled() is true: layer_idx -> expert_id -> total token selections.
+    // Expert selection counts accumulated across all run() calls:
+    // layer_idx -> expert_id -> total token selections.
     std::map<size_t, std::map<size_t, size_t>> m_expert_usage;
 
     // MoE I/O storage (per-sublayer)
