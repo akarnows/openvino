@@ -67,13 +67,15 @@ void dump_expert_usage(const ExpertUsageMap& usage, const std::string& path) {
         if (layer_it != usage.begin()) {
             oss << ",\n";
         }
-        oss << "  \"" << layer_it->first << "\": {";
+        const std::string& node_id = layer_it->first;
+        const std::string node_key = "node_" + node_id;
+        oss << "  \"" << node_key << "\": {";
         const auto& experts = layer_it->second;
         for (auto expert_it = experts.begin(); expert_it != experts.end(); ++expert_it) {
             if (expert_it != experts.begin()) {
                 oss << ", ";
             }
-            oss << "\"" << expert_it->first << "\": " << expert_it->second;
+            oss << "\"" << expert_it->first << "_" << node_key << "\": " << expert_it->second;
         }
         oss << "}";
     }
