@@ -4,6 +4,13 @@
 
 #include "moe_router_fused_opt.hpp"
 
+#include <cstdlib>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <sstream>
+#include <string>
+
 #include "../common_utils/dispatch_utils.hpp"
 #include "../common_utils/jitter.hpp"
 #include "../primitive_ocl_base.hpp"
@@ -12,6 +19,94 @@
 
 namespace ov::intel_gpu::ocl {
 namespace {
+
+const char* get_env(const std::initializer_list<const char*>& keys) {
+    for (const auto* key : keys) {
+        if (const char* value = std::getenv(key)) {
+            return value;
+        }
+    }
+    return nullptr;
+}
+
+const std::string& moe_stats_dump_path() {
+    static const std::string path = []() {
+        if (const char* env = get_env({"OPENVINO_MOE_STATS_PATH"})) {
+            return std::string(env);
+        }
+        return std::string();
+    }();
+    return path;
+}
+
+bool moe_stats_enabled() {
+    return !moe_stats_dump_path().empty();
+}
+
+using ExpertUsageMap = std::map<std::string, std::map<int32_t, size_t>>;
+
+ExpertUsageMap& get_expert_usage() {
+    static ExpertUsageMap usage;
+    return usage;
+}
+
+std::mutex& get_expert_usage_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+void dump_expert_usage(const ExpertUsageMap& usage, const std::string& path) {
+    std::ofstream file(path);
+    if (!file) {
+        return;
+    }
+
+    std::ostringstream oss;
+    oss << "{\n";
+    for (auto layer_it = usage.begin(); layer_it != usage.end(); ++layer_it) {
+        if (layer_it != usage.begin()) {
+            oss << ",\n";
+        }
+        oss << "  \"" << layer_it->first << "\": {";
+        const auto& experts = layer_it->second;
+        for (auto expert_it = experts.begin(); expert_it != experts.end(); ++expert_it) {
+            if (expert_it != experts.begin()) {
+                oss << ", ";
+            }
+            oss << "\"" << expert_it->first << "\": " << expert_it->second;
+        }
+        oss << "}";
+    }
+    oss << "\n}\n";
+
+    file << oss.str();
+}
+
+void record_expert_usage(const std::string& layer_id,
+                        const cldnn::memory::ptr& topk_indices_mem,
+                        const size_t entries_count,
+                        cldnn::stream& stream) {
+    if (!moe_stats_enabled() || !topk_indices_mem || entries_count == 0) {
+        return;
+    }
+
+    std::map<int32_t, size_t> local_counts;
+    {
+        cldnn::mem_lock<int32_t, cldnn::mem_lock_type::read> indices_lock(topk_indices_mem, stream);
+        for (size_t i = 0; i < entries_count; ++i) {
+            local_counts[indices_lock[i]]++;
+        }
+    }
+
+    std::lock_guard<std::mutex> guard(get_expert_usage_mutex());
+    auto& usage = get_expert_usage();
+    auto& layer_usage = usage[layer_id];
+    for (const auto& [expert_id, count] : local_counts) {
+        layer_usage[expert_id] += count;
+    }
+
+    dump_expert_usage(usage, moe_stats_dump_path());
+}
 
 class MoeRouterSoftMaxTopK : public KernelGenerator {
 public:
@@ -140,7 +235,12 @@ public:
 
         kernel_dump_info.add_entry_point(routing_stage->kernel->get_id());
 
-        return stream.enqueue_kernel(*routing_stage->kernel, kargs_desc, {}, events, instance.needs_completion_event());
+        auto event = stream.enqueue_kernel(*routing_stage->kernel, kargs_desc, {}, events, instance.needs_completion_event());
+
+        const size_t selected_entries_count = token_num * config.top_k;
+        record_expert_usage(instance.id(), topk_indices_mem, selected_entries_count, stream);
+
+        return event;
     }
 };
 

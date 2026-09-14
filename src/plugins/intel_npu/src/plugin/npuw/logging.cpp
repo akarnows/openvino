@@ -12,7 +12,6 @@
 #include "openvino/runtime/make_tensor.hpp"  // get_tensor_impl
 
 namespace {
-#ifdef NPU_PLUGIN_DEVELOPER_BUILD
 const char* get_env(const std::vector<std::string>& list_to_try) {
     for (auto&& key : list_to_try) {
         const char* pstr = std::getenv(key.c_str());
@@ -21,7 +20,6 @@ const char* get_env(const std::vector<std::string>& list_to_try) {
     }
     return nullptr;
 }
-#endif
 }  // anonymous namespace
 
 ov::npuw::LogLevel ov::npuw::get_log_level() {
@@ -90,16 +88,14 @@ bool ov::npuw::moe_stats_enabled() {
 
 std::string ov::npuw::moe_stats_dump_path() {
     static std::string path = "npuw_moe_stats.json";
-#ifdef NPU_PLUGIN_DEVELOPER_BUILD
     static std::once_flag flag;
 
     std::call_once(flag, []() {
-        const auto* path_opt = get_env({"OPENVINO_NPUW_MOE_STATS_PATH"});
+        const auto* path_opt = get_env({"OPENVINO_MOE_STATS_PATH"});
         if (path_opt) {
             path = path_opt;
         }
     });
-#endif
     return path;
 }
 
