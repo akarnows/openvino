@@ -75,7 +75,7 @@ void dump_expert_usage(const ExpertUsageMap& usage, const std::string& path) {
             if (expert_it != experts.begin()) {
                 oss << ", ";
             }
-            oss << "\"" << expert_it->first << "_" << node_key << "\": " << expert_it->second;
+            oss << "\"" << expert_it->first << "\": " << expert_it->second;
         }
         oss << "}";
     }

@@ -53,7 +53,7 @@ void MoEExecutor::dump_expert_usage() const {
             if (expert_it != experts.begin()) {
                 oss << ", ";
             }
-            oss << "\"" << expert_it->first << "_" << node_key << "\": " << expert_it->second;
+            oss << "\"" << expert_it->first << "\": " << expert_it->second;
         }
         oss << "}";
     }
