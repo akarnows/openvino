@@ -45,16 +45,6 @@ bool moe_stats_enabled() {
 
 using ExpertUsageMap = std::map<std::string, std::map<int32_t, size_t>>;
 
-ExpertUsageMap& get_expert_usage() {
-    static ExpertUsageMap usage;
-    return usage;
-}
-
-std::mutex& get_expert_usage_mutex() {
-    static std::mutex mutex;
-    return mutex;
-}
-
 void dump_expert_usage(const ExpertUsageMap& usage, const std::string& path) {
     std::ofstream file(path);
     if (!file) {
@@ -84,6 +74,33 @@ void dump_expert_usage(const ExpertUsageMap& usage, const std::string& path) {
     file << oss.str();
 }
 
+class ExpertUsageStore {
+public:
+    ~ExpertUsageStore() {
+        if (!moe_stats_enabled() || usage.empty()) {
+            return;
+        }
+        dump_expert_usage(usage, moe_stats_dump_path());
+    }
+
+    void add(const std::string& layer_id, const std::map<int32_t, size_t>& local_counts) {
+        std::lock_guard<std::mutex> guard(mutex);
+        auto& layer_usage = usage[layer_id];
+        for (const auto& [expert_id, count] : local_counts) {
+            layer_usage[expert_id] += count;
+        }
+    }
+
+private:
+    std::mutex mutex;
+    ExpertUsageMap usage;
+};
+
+ExpertUsageStore& get_expert_usage_store() {
+    static ExpertUsageStore store;
+    return store;
+}
+
 void record_expert_usage(const std::string& layer_id,
                         const cldnn::memory::ptr& topk_indices_mem,
                         const size_t entries_count,
@@ -99,15 +116,7 @@ void record_expert_usage(const std::string& layer_id,
             local_counts[indices_lock[i]]++;
         }
     }
-
-    std::lock_guard<std::mutex> guard(get_expert_usage_mutex());
-    auto& usage = get_expert_usage();
-    auto& layer_usage = usage[layer_id];
-    for (const auto& [expert_id, count] : local_counts) {
-        layer_usage[expert_id] += count;
-    }
-
-    dump_expert_usage(usage, moe_stats_dump_path());
+    get_expert_usage_store().add(layer_id, local_counts);
 }
 
 class MoeRouterSoftMaxTopK : public KernelGenerator {
