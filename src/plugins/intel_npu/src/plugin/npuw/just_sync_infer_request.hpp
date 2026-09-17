@@ -88,6 +88,7 @@ public:
     bool unpack_required(size_t idx, size_t cidx) override;
     bool needs_copy_closure(size_t idx, size_t cidx) override;
     std::string subgraph_device(size_t idx) override;
+    int64_t moe_valid_token_count() override;
     void set_active_subrequest(size_t idx, ov::SoPtr<ov::IAsyncInferRequest> request);
     ov::SoPtr<ov::IAsyncInferRequest> get_pipeline_subrequest(size_t idx) const;
     void set_pipeline_subrequest(size_t idx, ov::SoPtr<ov::IAsyncInferRequest> request);

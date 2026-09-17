@@ -79,6 +79,17 @@ public:
         return m_history_size;
     }
 
+    // Real (non-padded) token count of the current MoE prefill window, for expert-usage
+    // stats only — never consulted by dispatch/gather/scatter. <= 0 means unknown, i.e.
+    // treat every window position as real (matches pre-existing behavior).
+    void update_moe_valid_tokens(int64_t valid_tokens) {
+        m_moe_valid_tokens = valid_tokens;
+    }
+
+    int64_t get_moe_valid_tokens() const {
+        return m_moe_valid_tokens;
+    }
+
     std::size_t get_run_iteration() const {
         return m_run_iter;
     }
@@ -89,6 +100,7 @@ public:
 
 protected:
     int64_t m_history_size = 0;
+    int64_t m_moe_valid_tokens = 0;
 
     // After set_tensor() has replaced block tensors with dummies on the outer (LLM-level)
     // request, call this to push those updated tensors into sub-requests via bind_global_params.

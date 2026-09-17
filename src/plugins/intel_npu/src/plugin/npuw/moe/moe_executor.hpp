@@ -100,6 +100,16 @@ public:
      * @return Device identifier for the given subgraph
      */
     virtual std::string subgraph_device(size_t idx) = 0;
+
+    /**
+     * @brief Real (non-padded) token count of the current MoE prefill window.
+     *
+     * Used only to keep expert-usage stats from counting the static window's left-padding
+     * as expert activity; never consulted for dispatch, gather, or scatter.
+     *
+     * @return Real token count, or <= 0 if unknown (treat every window position as real)
+     */
+    virtual int64_t moe_valid_token_count() = 0;
 };
 
 namespace moe {

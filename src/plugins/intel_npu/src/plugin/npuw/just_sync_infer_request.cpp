@@ -58,6 +58,10 @@ std::string ov::npuw::JustInferRequest::subgraph_device(size_t idx) {
     return m_npuw_model->submodel_device(idx);
 }
 
+int64_t ov::npuw::JustInferRequest::moe_valid_token_count() {
+    return get_moe_valid_tokens();
+}
+
 void ov::npuw::JustInferRequest::set_active_subrequest(size_t idx, ov::SoPtr<ov::IAsyncInferRequest> request) {
     m_subrequests[idx] = std::move(request);
 }

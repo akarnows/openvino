@@ -1116,6 +1116,8 @@ void ov::npuw::LLMInferRequest::infer_chunked_prefill(ov::SoPtr<ov::ITensor> inp
             // The base request is absent when a test factory builds plain sub-requests.
             if (m_prefill_base_request) {
                 m_prefill_base_request->update_history_size(kvcache_desc.num_stored_tokens);
+                // MoE expert-usage stats: this chunk's real (non-padded) token count.
+                m_prefill_base_request->update_moe_valid_tokens(static_cast<int64_t>(current_prompts_len));
             }
 
             // Gemma4 E2B/E4B: copy the current chunk of per_layer_inputs right-aligned on seq_len dim.
@@ -1254,6 +1256,14 @@ void ov::npuw::LLMInferRequest::infer_whole_prefill(ov::SoPtr<ov::ITensor> input
         if (per_layer_inputs) {
             auto dst = m_prefill_request->get_tensor(m_prefill_in_ports.at(layer_names::per_layer_inputs));
             ov::npuw::util::copy_to_right(per_layer_inputs, dst);
+        }
+
+        // MoE expert-usage stats: tell the real prompt length so left-padding in the static
+        // window isn't counted as expert activity. The base request is absent when a test
+        // factory builds plain sub-requests.
+        if (m_prefill_base_request) {
+            m_prefill_base_request->update_moe_valid_tokens(
+                static_cast<int64_t>(input_ids->get_shape()[layer_ids::INPUT_IDS_SEQ_LEN_DIM]));
         }
     });
 

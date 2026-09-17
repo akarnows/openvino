@@ -4,6 +4,7 @@
 
 #include "moe_executor.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <sstream>
 
@@ -412,6 +413,14 @@ void MoEExecutor::run_expert_iterative(size_t idx) {
     const size_t num_tokens = m_config.input_token_count;
     const size_t num_experts = m_config.num_experts;
 
+    // Real tokens are right-aligned in the static window (left-padded), so only positions
+    // >= valid_start are actual input — the rest is padding and must not inflate expert-usage
+    // stats. Stats-only: never used for dispatch, gather, or scatter below.
+    const int64_t valid_tokens = m_accessor.moe_valid_token_count();
+    const size_t valid_start = (valid_tokens > 0 && static_cast<size_t>(valid_tokens) < num_tokens)
+                                   ? num_tokens - static_cast<size_t>(valid_tokens)
+                                   : 0;
+
     // Chunk-size selector
     auto select_chunk = [&](size_t remaining) -> size_t {
         const size_t smallest = m_resources.sorted_chunk_sizes.back();
@@ -552,7 +561,13 @@ void MoEExecutor::run_expert_iterative(size_t idx) {
                 continue;  // expert not selected — do not advance ring_idx
             }
 
-            record_expert_usage(idx, expert_id, cur.tokens.size());
+            const size_t real_token_count =
+                static_cast<size_t>(std::count_if(cur.tokens.begin(), cur.tokens.end(), [valid_start](size_t t) {
+                    return t >= valid_start;
+                }));
+            if (real_token_count > 0) {
+                record_expert_usage(idx, expert_id, real_token_count);
+            }
 
             // -- Dispatch: slice tokens into chunks and pipeline NPU execution --
             size_t processed = 0;
